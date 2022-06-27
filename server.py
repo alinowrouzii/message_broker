@@ -1,11 +1,65 @@
 from threading import Thread
 import re
 import socket
-
+import signal
+import time
+import multiprocessing as mp
 
 topics = {}
 
+def timeout(func, args = (), kwds = {}, timeout = 1, default = None):
+    pool = mp.Pool(processes = 1)
+    result = pool.apply_async(func, args = args, kwds = kwds)
+    try:
+        val = result.get(timeout = timeout)
+    except mp.TimeoutError:
+        pool.terminate()
+        raise Exception
+    else:
+        pool.close()
+        pool.join()
+        return val
 
+
+def send_ping(conn):
+    # server sends ping and wait for subscriber to wait for PONG response
+    conn.send(f"PING".encode())
+    print("PING sent to conn")
+    
+    while True:
+        user_msg = conn.recv(1024).decode()
+        user_msg = str(user_msg)
+        
+        if user_msg == "PONG":
+            print("> PONG")
+            break
+
+
+def unsubscribe_topics(conn):
+    pass
+    for topicID in topics.keys():
+        unsubscribe_topic(topicID=topicID, conn=conn)
+
+
+
+    
+    
+def handle_ping(conn):
+    while True:
+        # Send pingmessage to subscriber every 10 seconds
+        time.sleep(4)
+        try:
+            # wait for subscriber to response to PING message
+            # If subscriber did not any response in 10 seconds, timeout will occur
+            timeout(send_ping, args = (conn,), timeout = 5, default = '')
+        except Exception as e:
+            print(e)
+            # close the socket connection
+            conn.close()
+            unsubscribe_topics(conn)
+            print("timeout occured...")
+            break
+    
 def send_msg_to_subscribers(topicID, msg):
 
     topic = topics[topicID]
@@ -19,9 +73,12 @@ def send_msg_to_subscribers(topicID, msg):
 def unsubscribe_topic(topicID, conn):
     topic = topics[topicID]
     topic = list(topic)
-
-    topic.remove(conn)
-    topics[topicID] = topic
+    try:
+        topic.remove(conn)
+        topics[topicID] = topic
+    except ValueError:
+        pass
+    
 
 
 def create_topic(topicID):
@@ -54,7 +111,8 @@ def handle_publisher_client(new_connection, new_addr, user_msg):
         new_connection.send(
             f"Topic Does not exist\n".encode()
         )
-    except Exception:
+    except Exception as e:
+        print("eeee", e)
         new_connection.send(
             f"Something goes wrong\n".encode()
         )
@@ -99,7 +157,16 @@ def handle_client(newConn, addr):
     
     if user_msg.startswith("subscribe"):
         if len(user_msg.split(" ")) >= 2:
+            client_ping_handler = Thread(
+                target=handle_ping,
+                args=(
+                    newConn,
+                )
+            )
+            client_ping_handler.start()
+            
             handle_subscriber_client(newConn, addr, user_msg)
+            
         else:
             newConn.send(
                 f"Invalid input!!\nexiting...\n".encode()
@@ -134,14 +201,14 @@ def runner():
         print("Got connection from", address)
         # send a thank you message to the client. encoding to send byte type.
         
-        thread = Thread(
+        client_handler = Thread(
             target=handle_client,
             args=(
                 conn,
                 address,
             ),
         )
-        thread.start()
+        client_handler.start()
 
 
 runner()

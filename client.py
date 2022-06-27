@@ -7,10 +7,15 @@ def handle_printing(socket):
     while True:
         received_msg = socket.recv(1024).decode()
         
-        if not received_msg:
+        received_msg = str(received_msg)
+        
+        if received_msg == "PING":
+            socket.send("PONG".encode())
+            
+        if "your message published successfully" in received_msg:
+            socket.close()
             break
         
-        received_msg = str(received_msg)
         for line in received_msg.splitlines():
             print(f"> {line}")
 
