@@ -24,14 +24,15 @@ def timeout(func, args = (), kwds = {}, timeout = 1, default = None):
 def send_ping(conn):
     # server sends ping and wait for subscriber to wait for PONG response
     conn.send(f"PING".encode())
-    print("PING sent to conn")
+    host, port = conn.getpeername()
+    print(f"PING sent to {host}:{port}")
     
     while True:
         user_msg = conn.recv(1024).decode()
         user_msg = str(user_msg)
         
         if user_msg == "PONG":
-            print("> PONG")
+            print(f"> PONG from {host}:{port}")
             break
 
 
@@ -48,16 +49,16 @@ def handle_ping(conn):
     while True:
         # Send pingmessage to subscriber every 10 seconds
         time.sleep(4)
+        host, port = conn.getpeername()
         try:
             # wait for subscriber to response to PING message
             # If subscriber did not any response in 10 seconds, timeout will occur
             timeout(send_ping, args = (conn,), timeout = 5, default = '')
         except Exception as e:
-            print(e)
             # close the socket connection
             conn.close()
             unsubscribe_topics(conn)
-            print("timeout occured...")
+            print(f"timeout occured on {host}:{port} ...")
             break
     
 def send_msg_to_subscribers(topicID, msg):
